@@ -19,5 +19,6 @@ depends: [
   "core_kernel"
   "sexplib"
   "lwt_ppx"
+  "tls"
 ]
 version: "git"
