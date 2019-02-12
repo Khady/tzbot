@@ -1,0 +1,23 @@
+opam-version: "2.0"
+name: "tzbot"
+authors: "Louis Roché <louis@louisroche.net>"
+maintainer: "Louis Roché <louis@louisroche.net>"
+homepage: "https://github.com/khady/tzbot"
+synopsis: "Display timezone of slack users"
+dev-repo: "git+ssh://git@github.com:khady/tzbot.git"
+bug-reports: "https://github.com/khady/tzbot/issues"
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+]
+depends: [
+  "ocaml" {>= "4.03"}
+  "dune" {build}
+  "slacko"
+  "lwt"
+  "cmdliner"
+  "ppxlib"
+  "core_kernel"
+  "sexplib"
+  "lwt_ppx"
+]
+version: "git"
