@@ -110,7 +110,7 @@ let refresh =
 
 let info =
   let doc = "Posts messages to Slack" in
-  Cmdliner.Term.info "slack-notify" ~doc
+  Cmdliner.Term.info "tzbot" ~doc
 
 let execute_t = Cmdliner.Term.(pure execute $ token $ refresh $ storage)
 
