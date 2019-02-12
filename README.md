@@ -12,3 +12,8 @@ $ dune exec -- ./tzbot.exe -t $STOKEN
 
 ## Build
 
+```bash
+opam init --bare
+opam sw -y create . --deps-only --locked
+make
+```

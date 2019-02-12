@@ -1,6 +1,3 @@
-
-.PHONY: default all clean
-
 default: all
 
 all:
@@ -8,3 +5,8 @@ all:
 
 clean:
 	dune clean
+
+lock:
+	opam lock *.opam
+
+.PHONY: default all clean lock
