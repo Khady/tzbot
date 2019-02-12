@@ -38,8 +38,18 @@ let refresh_users token storage =
   let session = Slacko.start_session token in
   print_endline "connection established";
   match%lwt fetch_users session with
-  | Error _ ->
-    Lwt.fail_with "unable to fetch the users"
+  | Error e ->
+    let error msg =
+      Lwt.fail_with (sprintf "unable to fetch the users: %s" msg)
+    in
+    begin match e with
+      | `Account_inactive -> error "account inactive"
+      | `Not_authed -> error "not authed"
+      | `Unknown_error -> error "unknown error :("
+      | `Invalid_auth -> error "invalid auth"
+      | `ParseFailure e -> error @@ sprintf "parse failure: %s" e
+      | `Unhandled_error e -> error @@ sprintf "unhandled error %s" e
+    end
   | Ok users ->
     printf "the new list contains %d users\n" (List.length users);
     save_users users storage
