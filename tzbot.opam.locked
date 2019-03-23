@@ -3,7 +3,7 @@ name: "tzbot"
 authors: "Louis Roché <louis@louisroche.net>"
 maintainer: "Louis Roché <louis@louisroche.net>"
 homepage: "https://github.com/khady/tzbot"
-synopsis: "Display timezone of slack users"
+synopsis: "Display timezones of slack users"
 dev-repo: "git+ssh://git@github.com:khady/tzbot.git"
 bug-reports: "https://github.com/khady/tzbot/issues"
 build: [

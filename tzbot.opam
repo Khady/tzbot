@@ -17,7 +17,6 @@ depends: [
   "slacko" {>= "0.15"}
   "lwt"
   "cmdliner"
-  "ppxlib"
   "core_kernel"
   "sexplib"
   "lwt_ppx"
