@@ -2,4 +2,4 @@
  (public_name tzbot)
  (libraries slacko lwt cmdliner ppx_sexp_conv core_kernel sexplib)
  (preprocess
-  (pps lwt_ppx ppx_sexp_conv)))
+  (pps lwt_ppx ppx_sexp_conv ppx_deriving_yojson)))

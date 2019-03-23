@@ -9,9 +9,9 @@ type user =
   ; tz_offset : int
   ; tz_label : string option
   }
-[@@deriving sexp]
+[@@deriving yojson, sexp]
 
-type users = user list [@@deriving sexp]
+type users = user list [@@deriving yojson, sexp]
 
 let user_of_slack (u : Slacko.user_obj) =
   { name = u.name; tz = u.tz; tz_offset = u.tz_offset; tz_label = u.tz_label }
@@ -109,9 +109,9 @@ module Http = struct
     ; label : string option
     ; zone : string
     }
-  [@@deriving sexp]
+  [@@deriving yojson, sexp]
 
-  type tzs = tz list [@@deriving sexp]
+  type tzs = tz list [@@deriving yojson, sexp]
 
   let timezone tz =
     let names = List.map tz.users ~f:(fun u -> u.name) in
@@ -140,19 +140,28 @@ module Http = struct
   let start port (token, storage) =
     let callback _conn req _body =
       let uri = Request.uri req in
+      let headers_json = Cohttp.Header.init_with "Content-Type" "application/json" in
       match Uri.path uri with
       | "/version" ->
           Server.respond_string ~status:`OK ~body:"%%VERSION%%" ()
       | "/refresh" ->
           refresh token storage
-      | "/sexp/users" ->
+      | "/users.sexp" ->
           let%lwt users = load_users storage in
           let body = users |> sexp_of_users |> Sexp.to_string_hum in
           Server.respond_string ~status:`OK ~body ()
-      | "/sexp/tz" ->
+      | "/users.json" ->
+          let%lwt users = load_users storage in
+          let body = users |> users_to_yojson |> Yojson.Safe.to_string in
+          Server.respond_string ~headers:headers_json ~status:`OK ~body ()
+      | "/tz.sexp" ->
           let%lwt timezones = tz storage in
           let body = timezones |> sexp_of_tzs |> Sexp.to_string_hum in
           Server.respond_string ~status:`OK ~body ()
+      | "/tz.json" ->
+          let%lwt timezones = tz storage in
+          let body = timezones |> tzs_to_yojson |> Yojson.Safe.to_string in
+          Server.respond_string ~headers:headers_json ~status:`OK ~body ()
       | _ ->
           Server.respond_string ~status:`Not_found ~body:"path not found" ()
     in
