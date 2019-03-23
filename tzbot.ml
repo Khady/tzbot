@@ -17,10 +17,15 @@ let user_of_slack (u : Slacko.user_obj) =
   { name = u.name; tz = u.tz; tz_offset = u.tz_offset; tz_label = u.tz_label }
 
 
+let filter_active (u : Slacko.user_obj) =
+  not (u.is_bot || u.deleted || u.is_ultra_restricted)
+
+
 (** Download users from slack *)
 let fetch_users session =
   match%lwt Slacko.users_list session with
   | `Success users ->
+      let users = List.filter users ~f:filter_active in
       Lwt.return_ok users
   | #Slacko.parsed_auth_error as error ->
       Lwt.return_error error
