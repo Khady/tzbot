@@ -5,10 +5,18 @@ workspace.
 
 ## Example
 
+Display an ascii table:
+
 ```
-$ dune exec -- ./tzbot.exe -t $STOKEN
+$ dune exec ./tzbot.exe -- table $STOKEN
          Pacific Standard Time |     2019-02-12 06:30:14.501341 | slackbot
            Greenwich Mean Time |     2019-02-12 14:30:14.501341 | louis
+```
+
+Start the http server:
+
+```
+dune exec ./tzbot.exe -- server -p 8080 $STOKEN
 ```
 
 ## Build
