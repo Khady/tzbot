@@ -13,6 +13,11 @@ type user =
 
 type users = user list [@@deriving sexp]
 
+let user_of_slack (u : Slacko.user_obj) =
+  { name = u.name; tz = u.tz; tz_offset = u.tz_offset; tz_label = u.tz_label }
+
+
+(** Download users from slack *)
 let fetch_users session =
   match%lwt Slacko.users_list session with
   | `Success users ->
@@ -21,15 +26,8 @@ let fetch_users session =
       Lwt.return_error error
 
 
+(** Save users on disk *)
 let save_users users storage =
-  let users =
-    List.map users ~f:(fun (u : Slacko.user_obj) ->
-        { name = u.name
-        ; tz = u.tz
-        ; tz_offset = u.tz_offset
-        ; tz_label = u.tz_label
-        } )
-  in
   let%lwt oc = Lwt_io.open_file ~mode:Lwt_io.Output storage in
   let%lwt () =
     Lwt_io.write_line oc (users |> sexp_of_users |> Sexp.to_string)
@@ -38,9 +36,10 @@ let save_users users storage =
   Lwt.return_unit
 
 
+(** Download users from slack and update storage *)
 let refresh_users token storage =
   let session = Slacko.start_session token in
-  print_endline "connection established" ;
+  print_endline "connection to slack" ;
   match%lwt fetch_users session with
   | Error e ->
       let error msg =
@@ -61,9 +60,11 @@ let refresh_users token storage =
           error @@ sprintf "unhandled error %s" e )
   | Ok users ->
       printf "the new list contains %d users\n" (List.length users) ;
+      let users = List.map users ~f:user_of_slack in
       save_users users storage
 
 
+(** Read users from storage *)
 let load_users storage =
   let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.Input storage in
   let%lwt content = Lwt_io.read ic in
@@ -78,22 +79,33 @@ let sexp_display users =
          u |> sexp_of_user |> Sexp.to_string_hum |> print_endline )
 
 
+let tz_display now users =
+  let names = List.map ~f:(fun u -> u.name) users in
+  let names = String.concat ~sep:", " names in
+  let { tz_offset; _ } = List.hd_exn users in
+  let tz_label = List.find_map users ~f:(fun user -> user.tz_label) in
+  let tz = List.find_map users ~f:(fun user -> user.tz) in
+  let hours = tz_offset / (60 * 60) in
+  let zone = Time.Zone.of_utc_offset ~hours in
+  let time = Time.to_string_trimmed now ~zone in
+  let label =
+    match (tz_label, tz) with
+    | Some label, _ | None, Some label ->
+        label
+    | None, None ->
+        "-"
+  in
+  printf "%30s | %30s | %s\n" label time names
+
+
 let table_display users =
-  let tz_offset_map = Core_kernel.Map.empty (module Base.Int) in
+  let tz_offset_map = Core_kernel.Map.empty (module Int) in
   let tz_offset_map =
     List.fold_left users ~init:tz_offset_map ~f:(fun map u ->
-        Base.Map.add_multi map ~key:u.tz_offset ~data:u )
+        Map.add_multi map ~key:u.tz_offset ~data:u )
   in
   let now = Time.now () in
-  Base.Map.iter tz_offset_map ~f:(fun users ->
-      let names = List.map ~f:(fun u -> u.name) users in
-      let names = String.concat ~sep:", " names in
-      let { tz = _; tz_offset; tz_label; name = _ } = List.hd_exn users in
-      let hours = tz_offset / (60 * 60) in
-      let zone = Time.Zone.of_utc_offset ~hours in
-      let time = Time.to_string_trimmed now ~zone in
-      let label = Base.Option.value tz_label ~default:"-" in
-      printf "%30s | %30s | %s\n" label time names )
+  Map.iter tz_offset_map ~f:(tz_display now)
 
 
 let execute token refresh storage =
