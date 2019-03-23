@@ -1,4 +1,5 @@
 (executable
  (public_name tzbot)
  (libraries slacko lwt cmdliner ppx_sexp_conv core_kernel sexplib)
- (preprocess (pps lwt_ppx ppx_sexp_conv)))
+ (preprocess
+  (pps lwt_ppx ppx_sexp_conv)))
