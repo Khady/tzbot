@@ -1,6 +1,7 @@
 # tzbot
 
-Simple executable to show the timezones of all users on a slack workspace.
+Simple executable to show the timezones of all users on a slack
+workspace.
 
 ## Example
 
@@ -17,3 +18,5 @@ opam init --bare
 opam sw -y create . --deps-only --locked
 make
 ```
+
+If you already have an opam switch, you can simply call `make init`.

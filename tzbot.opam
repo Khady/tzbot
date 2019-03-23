@@ -12,7 +12,7 @@ build: [
 depends: [
   "ocaml" {>= "4.03"}
   "dune" {build}
-  "slacko"
+  "slacko" {>= "0.15"}
   "lwt"
   "cmdliner"
   "ppxlib"
