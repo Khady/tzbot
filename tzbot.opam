@@ -10,8 +10,8 @@ build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
 depends: [
-  "ocaml" {>= "4.03"}
-  "dune" {build}
+  "ocaml" {>= "4.04"}
+  "dune" {build & >= "1.1.0"}
   "slacko"
   "lwt"
   "cmdliner"

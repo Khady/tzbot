@@ -5,32 +5,57 @@ open Conv
 
 type user = {
   name: string;
+  display_name: string option;
+  real_name: string option;
   tz: string option;
   tz_offset: int;
-  tz_label: string;
+  tz_label: string option;
+  is_restricted: bool;
+  is_ultra_restricted: bool;
 } [@@deriving sexp]
 
 type users = user list [@@deriving sexp]
 
+let convert_user (user: Slacko.user_obj) =
+  let module U = Yojson.Safe.Util in
+  let display_name =
+    match
+      user.profile
+      |> U.member "display_name"
+      |> U.to_string
+    with
+    | exception _ -> None
+    | "" -> None
+    | s -> Some s
+  in
+  {
+    name = user.name;
+    display_name;
+    real_name = user.real_name;
+    tz = user.tz;
+    tz_offset = user.tz_offset;
+    tz_label = user.tz_label;
+    is_restricted = user.is_restricted;
+    is_ultra_restricted = user.is_ultra_restricted;
+  }
+
 let fetch_users session =
   match%lwt Slacko.users_list session with
-  | `Success users -> Lwt.return_ok users
   | #Slacko.parsed_auth_error as error -> Lwt.return_error error
+  | `Success users ->
+    let valid_users =
+      List.filter_map users
+        ~f:(fun u ->
+          match not u.deleted && not u.is_bot with
+          | false -> None
+          | true -> Some (convert_user u)
+        )
+    in
+    Lwt.return_ok valid_users
 
 let save_users users storage =
-  let users =
-    List.map users
-      ~f:(fun (u : Slacko.user_obj) ->
-        {
-          name = u.name;
-          tz = u.tz;
-          tz_offset = u.tz_offset;
-          tz_label = u.tz_label;
-        }
-      )
-  in
   let%lwt oc = Lwt_io.open_file ~mode:Lwt_io.Output storage in
-  let%lwt () = Lwt_io.write_line oc (users |> sexp_of_users |> Sexp.to_string) in
+  let%lwt () = Lwt_io.write oc (users |> sexp_of_users |> Sexp.to_string) in
   let%lwt () = Lwt_io.close oc in
   Lwt.return_unit
 
@@ -38,27 +63,29 @@ let refresh_users token storage =
   let session = Slacko.start_session token in
   print_endline "connection established";
   match%lwt fetch_users session with
+  | Ok users ->
+    printf "the new list contains %d users\n" (List.length users);
+    save_users users storage
   | Error e ->
     let error msg =
       Lwt.fail_with (sprintf "unable to fetch the users: %s" msg)
     in
-    begin match e with
-      | `Account_inactive -> error "account inactive"
-      | `Not_authed -> error "not authed"
-      | `Unknown_error -> error "unknown error :("
-      | `Invalid_auth -> error "invalid auth"
-      | `ParseFailure e -> error @@ sprintf "parse failure: %s" e
-      | `Unhandled_error e -> error @@ sprintf "unhandled error %s" e
-    end
-  | Ok users ->
-    printf "the new list contains %d users\n" (List.length users);
-    save_users users storage
+    match e with
+    | `Account_inactive -> error "account inactive"
+    | `Not_authed -> error "not authed"
+    | `Unknown_error -> error "unknown error :("
+    | `Invalid_auth -> error "invalid auth"
+    | `ParseFailure e -> error @@ sprintf "parse failure: %s" e
+    | `Unhandled_error e -> error @@ sprintf "unhandled error %s" e
 
 let load_users storage =
-  let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.Input storage in
-  let%lwt content = Lwt_io.read ic in
-  let%lwt () = Lwt_io.close ic in
-  content |> Sexp.of_string |> users_of_sexp |> Lwt.return
+  try%lwt
+    let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.Input storage in
+    let%lwt content = Lwt_io.read ic in
+    let%lwt () = Lwt_io.close ic in
+    content |> Sexp.of_string |> users_of_sexp |> Lwt.return
+  with _ ->
+    Lwt.fail_with "unable to load users, try to relaunch with --refresh"
 
 let sexp_display users =
   users
@@ -71,23 +98,33 @@ let sexp_display users =
   )
 
 let table_display users =
-  let tz_offset_map = Core_kernel.Map.empty (module Base.Int) in
+  let tz_offset_map = Map.empty (module Int) in
   let tz_offset_map =
     List.fold_left
       users
       ~init:tz_offset_map
-      ~f:(fun map u -> Base.Map.add_multi map ~key:u.tz_offset ~data:u)
+      ~f:(fun map u -> Map.add_multi map ~key:u.tz_offset ~data:u)
   in
   let now = Time.now () in
-  Base.Map.iter tz_offset_map ~f:(fun users ->
-    let names = List.map ~f:(fun u -> u.name) users in
-    let names = String.concat ~sep:", " names in
-    let { tz = _; tz_offset; tz_label; name = _ } = List.hd_exn users in
-    let hours = tz_offset / (60 * 60) in
-    let zone = Time.Zone.of_utc_offset ~hours in
-    let time = Time.to_string_trimmed now ~zone in
-    printf "%30s | %30s | %s\n" tz_label time names
-  )
+  Map.iteri tz_offset_map
+    ~f:(fun ~key:tz_offset ~data:users ->
+      let names =
+        List.map users
+          ~f:(fun u ->
+            match u.display_name with
+            | Some s -> s
+            | None ->
+              match u.real_name with
+              | Some s -> s
+              | None -> u.name
+          )
+      in
+      let names = String.concat ~sep:", " names in
+      let hours = tz_offset / (60 * 60) in
+      let zone = Time.Zone.of_utc_offset ~hours in
+      let time = Time.to_string_trimmed now ~zone in
+      printf "%s | %s\n" time names
+    )
 
 let execute token refresh storage =
   Lwt_main.run @@
