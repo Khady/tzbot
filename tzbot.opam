@@ -23,5 +23,6 @@ depends: [
   "lwt_ppx"
   "tls"
   "ppx_deriving_yojson"
+  "ocamlformat" { dev }
 ]
 version: "git"
