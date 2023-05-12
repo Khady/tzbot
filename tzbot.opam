@@ -13,16 +13,17 @@ build: [
   ["dune" "runtest" "-p" name "-j" jobs] { with-test }
 ]
 depends: [
-  "ocaml" {>= "4.03"}
+  "ocaml" {>= "4.14.0"}
   "dune" {build}
   "slacko" {>= "0.15"}
   "lwt"
-  "cmdliner"
+  "cmdliner" {>= "1.1.0"}
   "core_kernel"
   "sexplib"
   "lwt_ppx"
   "tls"
   "ppx_deriving_yojson"
-  "ocamlformat" { dev }
+  "ppx_compare"
+  "ocamlformat" { with-dev-setup }
 ]
 version: "git"

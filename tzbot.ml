@@ -19,10 +19,19 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 )* }}} *)
 
-open Core_kernel
+open Core
 open Printf
 open Sexplib
 open Conv
+
+module Tz = struct
+  module T = struct
+    type t = string option [@@deriving sexp, compare]
+  end
+
+  include T
+  include Comparable.Make (T)
+end
 
 type user =
   { name : string
@@ -42,6 +51,7 @@ type timezone =
   { users : users
   ; label : string option
   ; zone : Time.Zone.t
+  ; offset : int
   }
 
 let timezone ~key:tz_offset ~data:users =
@@ -50,16 +60,41 @@ let timezone ~key:tz_offset ~data:users =
   let tz_label = List.find_map users ~f:(fun user -> user.tz_label) in
   let tz = List.find_map users ~f:(fun user -> user.tz) in
   let label = Option.first_some tz_label tz in
-  { users; zone; label }
+  { users; zone; label; offset = tz_offset }
 ;;
 
 let timezones users =
   let tz_offset_map = Map.empty (module Int) in
   let tz_offset_map =
     List.fold_left users ~init:tz_offset_map ~f:(fun map u ->
-        Map.add_multi map ~key:u.tz_offset ~data:u)
+      Map.add_multi map ~key:u.tz_offset ~data:u)
   in
-  Map.mapi tz_offset_map ~f:timezone
+  let tz_offset_map = Map.mapi tz_offset_map ~f:timezone in
+  let tz_list = Map.to_alist tz_offset_map in
+  List.map ~f:snd tz_list
+;;
+
+let city ~key:tz ~data:users =
+  let tz_offset =
+    let u = List.hd_exn users in
+    u.tz_offset
+  in
+  let hours = tz_offset / (60 * 60) in
+  let zone = Time.Zone.of_utc_offset ~hours in
+  let tz_label = List.find_map users ~f:(fun user -> user.tz_label) in
+  let label = Option.first_some tz tz_label in
+  { users; zone; label; offset = tz_offset }
+;;
+
+let cities users =
+  let tz_map = Map.empty (module Tz) in
+  let tz_map =
+    List.fold_left users ~init:tz_map ~f:(fun map u ->
+      Map.add_multi map ~key:u.tz ~data:u)
+  in
+  let tz_map = Map.mapi tz_map ~f:city in
+  let tz_list = Map.to_alist tz_map in
+  List.map ~f:snd tz_list
 ;;
 
 let filter_active (u : Slacko.user_obj) =
@@ -95,12 +130,12 @@ let refresh_users token storage =
       Lwt.fail_with (sprintf "unable to fetch the users: %s" msg)
     in
     (match e with
-    | `Account_inactive -> error "account inactive"
-    | `Not_authed -> error "not authed"
-    | `Unknown_error -> error "unknown error :("
-    | `Invalid_auth -> error "invalid auth"
-    | `ParseFailure e -> error @@ sprintf "parse failure: %s" e
-    | `Unhandled_error e -> error @@ sprintf "unhandled error %s" e)
+     | `Account_inactive -> error "account inactive"
+     | `Not_authed -> error "not authed"
+     | `Unknown_error -> error "unknown error :("
+     | `Invalid_auth -> error "invalid auth"
+     | `ParseFailure e -> error @@ sprintf "parse failure: %s" e
+     | `Unhandled_error e -> error @@ sprintf "unhandled error %s" e)
   | Ok users ->
     printf "the new list contains %d users\n" (List.length users);
     let users = List.map users ~f:user_of_slack in
@@ -145,8 +180,8 @@ module Http = struct
   let tz storage =
     let%lwt users = load_users storage in
     let timezones = timezones users in
-    let timezones = Map.map timezones ~f:timezone in
-    Lwt.return (Map.data timezones)
+    let timezones = List.map timezones ~f:timezone in
+    Lwt.return timezones
   ;;
 
   let start port (token, storage) =
@@ -181,19 +216,19 @@ module Http = struct
        let%lwt () =
          Server.create ~mode:(`TCP (`Port port)) (Server.make ~callback ())
        in
-       Lwt.return (`Ok ()))
+       Lwt.return ())
   ;;
 end
 
 module Text = struct
   let sexp_display users =
     users
-    |> List.sort ~compare:(fun a b -> compare a.tz_offset b.tz_offset)
+    |> List.sort ~compare:(fun a b -> Int.compare a.tz_offset b.tz_offset)
     |> List.map ~f:(fun u -> u |> sexp_of_user |> Sexp.to_string_hum)
     |> List.iter ~f:print_endline
   ;;
 
-  let tz_display now { users; label; zone } =
+  let tz_display now { users; label; zone; offset = _ } =
     let label = Option.value label ~default:"-" in
     let names = List.map ~f:(fun u -> u.name) users in
     let names = String.concat ~sep:", " names in
@@ -201,20 +236,36 @@ module Text = struct
     printf "%30s | %20s | %s\n" label time names
   ;;
 
-  let table_display users =
-    let timezones = timezones users in
+  let table_display group_by users =
+    let timezones =
+      match group_by with
+      | `Tz -> timezones users
+      | `City -> cities users
+    in
     let now = Time.now () in
-    Map.iter timezones ~f:(tz_display now)
+    timezones
+    |> List.sort ~compare:(fun a b -> Int.compare a.offset b.offset)
+    |> List.iter ~f:(tz_display now)
   ;;
 
-  let display refresh (token, storage) =
+  let table refresh group_by (token, storage) =
     Lwt_main.run
       (let%lwt () =
          if refresh then refresh_users token storage else Lwt.return_unit
        in
        let%lwt users = load_users storage in
-       table_display users;
-       Lwt.return (`Ok ()))
+       table_display group_by users;
+       Lwt.return ())
+  ;;
+
+  let sexp refresh (token, storage) =
+    Lwt_main.run
+      (let%lwt () =
+         if refresh then refresh_users token storage else Lwt.return_unit
+       in
+       let%lwt users = load_users storage in
+       sexp_display users;
+       Lwt.return ())
   ;;
 end
 
@@ -227,8 +278,7 @@ let copts_t =
   let docs = Manpage.s_common_options in
   let token =
     let doc = "The Slack API access token" in
-    Arg.(
-      required & pos 0 (some string) None & info [] ~docv:"TOKEN" ~doc ~docs)
+    Arg.(required & pos 0 (some string) None & info [] ~docv:"TOKEN" ~doc ~docs)
   in
   let storage =
     let doc = "The file to store users information" in
@@ -245,28 +295,42 @@ let refresh =
   Arg.(value & flag & info [ "r"; "refresh" ] ~docv:"REFRESH" ~doc)
 ;;
 
+let group_by =
+  let doc = "group by timezone or city" in
+  let modes = Arg.(enum [ "tz", `Tz; "city", `City ]) in
+  Arg.(value & opt modes `Tz & info [ "group-by" ] ~docv:"GROUP_BY" ~doc)
+;;
+
 let http_server_cmd =
   let doc = "Http server providing timezones as json" in
-  let info = Term.info "server" ~doc in
+  let info = Cmd.info "server" ~doc in
   let port =
     Arg.(value & opt int 8000 & info [ "p"; "port" ] ~docv:"PORT" ~doc)
   in
-  Term.(const Http.start $ port $ copts_t), info
+  let term = Term.(const Http.start $ port $ copts_t) in
+  Cmd.v info term
 ;;
 
 let text_table_cmd =
   let doc = "Display the timezones of slack users in a table" in
-  let info = Term.info "table" ~doc in
-  Term.(const Text.display $ refresh $ copts_t), info
+  let info = Cmd.info "table" ~doc in
+  let term = Term.(const Text.table $ refresh $ group_by $ copts_t) in
+  Cmd.v info term
 ;;
 
-let default_cmd =
-  let doc = "A simple tool to get the timezones in a slack group" in
-  let exits = Term.default_exits in
-  (Term.(ret (const (fun _ -> `Help (`Pager, None)) $ copts_t))
-  , Term.info "tzbot" ~doc ~exits)
+let sexp_cmd =
+  let doc = "Display the timezones of slack users as a sexp" in
+  let info = Cmd.info "sexp" ~doc in
+  let term = Term.(const Text.sexp $ refresh $ copts_t) in
+  Cmd.v info term
 ;;
 
 let () =
-  Term.(exit @@ eval_choice default_cmd [ text_table_cmd; http_server_cmd ])
+  let doc = "A simple tool to get the timezones in a slack group" in
+  let info = Cmd.info "tzbot" ~doc in
+  let default = Term.(ret (const (fun _ -> `Help (`Pager, None)) $ copts_t)) in
+  let group =
+    Cmd.group info ~default [ text_table_cmd; http_server_cmd; sexp_cmd ]
+  in
+  exit @@ Cmd.eval ~catch:true group
 ;;
