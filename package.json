@@ -1,9 +1,0 @@
-{
-  "source": "./tzbot.opam",
-  "override": {
-    "buildsInSource": "unsafe",
-    "dependencies": {
-      "ocaml": "4.7.1"
-    }
-  }
-}
