@@ -231,9 +231,10 @@ module Text = struct
   let tz_display now { users; label; zone; offset = _ } =
     let label = Option.value label ~default:"-" in
     let names = List.map ~f:(fun u -> u.name) users in
+    let names_nbr = List.length names in
     let names = String.concat ~sep:", " names in
     let time = Time.to_sec_string now ~zone in
-    printf "%30s | %20s | %s\n" label time names
+    printf "%30s | %20s | %3d | %s\n" label time names_nbr names
   ;;
 
   let table_display group_by users =
