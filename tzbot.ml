@@ -230,7 +230,8 @@ module Text = struct
 
   let tz_display now { users; label; zone; offset = _ } =
     let label = Option.value label ~default:"-" in
-    let names = List.map ~f:(fun u -> u.name) users in
+    let names = List.map users ~f:(fun u -> u.name) in
+    let names = List.sort names ~compare:String.compare in
     let names_nbr = List.length names in
     let names = String.concat ~sep:", " names in
     let time = Time.to_sec_string now ~zone in
